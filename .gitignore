@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+*.sqlite3
+
+# Django
+local_settings.py
+db.sqlite3
+media/
+
+# Node
+node_modules/
+.next/
+out/
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Docker
+.dockerignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Misc
+*.log
+.env.local
+.env.*.local

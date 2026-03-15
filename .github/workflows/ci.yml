@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — lint + test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: swisschess_test
+          POSTGRES_USER: swisschess
+          POSTGRES_PASSWORD: swisschess
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://swisschess:swisschess@localhost:5432/swisschess_test
+          SECRET_KEY: ci-secret-key
+          DEBUG: "True"
+          DJANGO_SETTINGS_MODULE: config.settings
+        run: python -m pytest pairing/tests/ -v
+
+  frontend:
+    name: Frontend — build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npm run build

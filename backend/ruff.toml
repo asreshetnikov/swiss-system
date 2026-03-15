@@ -1,0 +1,6 @@
+[lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]  # line too long
+
+[lint.per-file-ignores]
+"*/migrations/*.py" = ["E501", "F401"]
