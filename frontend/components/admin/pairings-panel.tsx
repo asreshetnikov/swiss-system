@@ -220,7 +220,10 @@ export function PairingsPanel({ slug, tournament, onTournamentUpdate }: Props) {
                     <td className="px-4 py-2 text-gray-500">{p.board_number}</td>
                     <td className="px-4 py-2">
                       {p.is_bye ? (
-                        <span className="text-gray-500 italic">BYE</span>
+                        <>
+                          {p.white_name || p.black_name}
+                          <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">BYE</span>
+                        </>
                       ) : (
                         <>
                           {p.white_name}
@@ -231,7 +234,9 @@ export function PairingsPanel({ slug, tournament, onTournamentUpdate }: Props) {
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      {!p.is_bye && (
+                      {p.is_bye ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
                         <>
                           {p.black_name}
                           {p.black_seed && (

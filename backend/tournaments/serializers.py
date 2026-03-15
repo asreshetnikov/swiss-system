@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 from .models import Tournament
 
+VALID_TIEBREAKS = {"buchholz", "wins", "head_to_head"}
+
 
 class TournamentSerializer(serializers.ModelSerializer):
     owner_email = serializers.EmailField(source="owner.email", read_only=True)
@@ -11,9 +13,19 @@ class TournamentSerializer(serializers.ModelSerializer):
         fields = (
             "id", "slug", "name", "description", "time_control",
             "num_rounds", "bye_points", "status", "is_public",
-            "owner_email", "created_at", "updated_at",
+            "tiebreak_order", "owner_email", "created_at", "updated_at",
         )
         read_only_fields = ("id", "slug", "owner_email", "status", "created_at", "updated_at")
+
+    def validate_tiebreak_order(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Must be a list")
+        for tb in value:
+            if tb not in VALID_TIEBREAKS:
+                raise serializers.ValidationError(f"Unknown tiebreak: {tb}")
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Duplicates not allowed")
+        return value
 
 
 class TournamentStatusSerializer(serializers.Serializer):

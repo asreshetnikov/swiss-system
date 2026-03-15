@@ -181,9 +181,16 @@ export default function PublicTournamentPage() {
                           <tr key={p.id} className="border-t border-gray-100">
                             <td className="px-4 py-2 text-gray-400">{p.board_number}</td>
                             <td className="px-4 py-2">
-                              {p.is_bye ? <em className="text-gray-400">BYE</em> : p.white_name}
+                              {p.is_bye ? (
+                                <>
+                                  {p.white_name || p.black_name}
+                                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-1 rounded">BYE</span>
+                                </>
+                              ) : p.white_name}
                             </td>
-                            <td className="px-4 py-2">{!p.is_bye && p.black_name}</td>
+                            <td className="px-4 py-2">
+                              {p.is_bye ? <span className="text-gray-400">—</span> : p.black_name}
+                            </td>
                             <td className="px-4 py-2 font-medium">
                               {RESULT_DISPLAY[p.result] || p.result}
                             </td>
@@ -231,6 +238,7 @@ export default function PublicTournamentPage() {
                     <th className="text-left px-4 py-2 font-medium text-gray-600">#</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Pts</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">BH</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">W/D/L</th>
                   </tr>
                 </thead>
@@ -243,6 +251,7 @@ export default function PublicTournamentPage() {
                       <td className="px-4 py-2 text-gray-400">{row.rank}</td>
                       <td className="px-4 py-2 font-medium">{row.name}</td>
                       <td className="px-4 py-2 font-bold text-blue-700">{row.points}</td>
+                      <td className="px-4 py-2 text-gray-500">{row.buchholz?.toFixed(1) ?? "—"}</td>
                       <td className="px-4 py-2 text-gray-500">
                         {row.wins}/{row.draws}/{row.losses}
                       </td>

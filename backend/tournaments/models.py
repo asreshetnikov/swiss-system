@@ -31,6 +31,7 @@ class Tournament(models.Model):
     bye_points = models.DecimalField(max_digits=3, decimal_places=1, default="1.0")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     is_public = models.BooleanField(default=True)
+    tiebreak_order = models.JSONField(blank=True, default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

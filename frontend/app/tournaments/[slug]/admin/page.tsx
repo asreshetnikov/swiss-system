@@ -5,6 +5,12 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { tournaments as tournamentApi } from "@/lib/api";
 import type { Tournament } from "@/lib/types";
+
+const TIEBREAK_LABELS: Record<string, string> = {
+  buchholz: "Buchholz",
+  wins: "Wins",
+  head_to_head: "Head-to-head",
+};
 import { ParticipantsPanel } from "@/components/admin/participants-panel";
 import { PairingsPanel } from "@/components/admin/pairings-panel";
 import { StandingsPanel } from "@/components/admin/standings-panel";
@@ -39,6 +45,9 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState("");
+  const [tiebreakOrder, setTiebreakOrder] = useState<string[]>([]);
+  const [tiebreakSaving, setTiebreakSaving] = useState(false);
+  const [tiebreakError, setTiebreakError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -47,9 +56,40 @@ export default function AdminPage() {
   useEffect(() => {
     tournamentApi
       .get(slug)
-      .then(setTournament)
+      .then((t) => {
+        setTournament(t);
+        setTiebreakOrder(t.tiebreak_order || []);
+      })
       .finally(() => setFetching(false));
   }, [slug]);
+
+  const updateTiebreak = (index: number, value: string) => {
+    setTiebreakOrder((prev) => {
+      const next = [...prev];
+      if (value === "") {
+        next.splice(index, 1);
+      } else {
+        next[index] = value;
+      }
+      return next;
+    });
+  };
+
+  const saveTiebreaks = async () => {
+    setTiebreakError("");
+    setTiebreakSaving(true);
+    try {
+      const updated = await tournamentApi.update(slug, {
+        tiebreak_order: tiebreakOrder.filter(Boolean),
+      });
+      setTournament(updated);
+      setTiebreakOrder(updated.tiebreak_order || []);
+    } catch (err: unknown) {
+      setTiebreakError((err as Error).message || "Failed to save tiebreaks");
+    } finally {
+      setTiebreakSaving(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
     setError("");
@@ -125,6 +165,38 @@ export default function AdminPage() {
               <dt className="text-gray-500">Public</dt>
               <dd>{tournament.is_public ? "Yes" : "No"}</dd>
             </dl>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+            <h2 className="font-semibold mb-3">Tiebreak order</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              Select up to 3 tiebreaks applied after points. Seed is always the final fallback.
+            </p>
+            <div className="flex gap-2 flex-wrap items-center">
+              {[0, 1, 2].map((i) => (
+                <select
+                  key={i}
+                  value={tiebreakOrder[i] || ""}
+                  onChange={(e) => updateTiebreak(i, e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">— none —</option>
+                  {Object.entries(TIEBREAK_LABELS)
+                    .filter(([v]) => v === tiebreakOrder[i] || !tiebreakOrder.includes(v))
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                </select>
+              ))}
+              <button
+                onClick={saveTiebreaks}
+                disabled={tiebreakSaving}
+                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {tiebreakSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+            {tiebreakError && <p className="text-red-600 text-sm mt-2">{tiebreakError}</p>}
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4">

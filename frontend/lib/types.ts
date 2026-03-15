@@ -17,6 +17,7 @@ export interface Tournament {
   bye_points: string;
   status: TournamentStatus;
   is_public: boolean;
+  tiebreak_order: string[];
   owner_email: string;
   created_at: string;
   updated_at: string;
@@ -77,6 +78,7 @@ export interface StandingRow {
   losses: number;
   byes: number;
   games_played: number;
+  buchholz: number;
 }
 
 export interface ApiError {

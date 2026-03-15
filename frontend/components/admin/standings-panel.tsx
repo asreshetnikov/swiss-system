@@ -34,6 +34,7 @@ export function StandingsPanel({ slug }: Props) {
             <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
             <th className="text-left px-4 py-2 font-medium text-gray-600">Rating</th>
             <th className="text-left px-4 py-2 font-medium text-gray-600">Points</th>
+            <th className="text-left px-4 py-2 font-medium text-gray-600">BH</th>
             <th className="text-left px-4 py-2 font-medium text-gray-600">W</th>
             <th className="text-left px-4 py-2 font-medium text-gray-600">D</th>
             <th className="text-left px-4 py-2 font-medium text-gray-600">L</th>
@@ -46,6 +47,7 @@ export function StandingsPanel({ slug }: Props) {
               <td className="px-4 py-2 font-medium">{row.name}</td>
               <td className="px-4 py-2 text-gray-500">{row.rating ?? "—"}</td>
               <td className="px-4 py-2 font-bold">{row.points}</td>
+              <td className="px-4 py-2 text-gray-500">{row.buchholz?.toFixed(1) ?? "—"}</td>
               <td className="px-4 py-2 text-green-700">{row.wins}</td>
               <td className="px-4 py-2 text-blue-700">{row.draws}</td>
               <td className="px-4 py-2 text-red-700">{row.losses}</td>
