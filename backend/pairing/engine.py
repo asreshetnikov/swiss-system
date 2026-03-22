@@ -5,6 +5,7 @@ All inputs/outputs are plain Python data structures.
 """
 from __future__ import annotations
 
+import random as _random
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
@@ -69,12 +70,17 @@ def _assign_bye(players: list[PlayerState]) -> Optional[PlayerState]:
     return candidates[0] if candidates else None
 
 
-def generate_pairings(round_number: int, players: list[PlayerState]) -> list[Pair]:
+def generate_pairings(
+    round_number: int,
+    players: list[PlayerState],
+    rng: Optional[_random.Random] = None,
+) -> list[Pair]:
     """
     Generate pairings for the given round.
 
     round_number: 1-based round index
     players: all participants (active and non-active)
+    rng: optional Random instance for reproducible results (used in tests)
 
     Returns list of Pair objects. Bye pairs have is_bye=True and one side None.
     """
@@ -91,24 +97,33 @@ def generate_pairings(round_number: int, players: list[PlayerState]) -> list[Pai
         pairs.append(Pair(white_id=bye_player.id, black_id=None, is_bye=True))
 
     if round_number == 1:
-        pairs += _round1_pairings(active)
+        _rng = rng or _random.Random()
+        top_starts_white: bool = _rng.choice([True, False])
+        pairs += _round1_pairings(active, top_starts_white)
     else:
         pairs += _swiss_pairings(active)
 
     return pairs
 
 
-def _round1_pairings(players: list[PlayerState]) -> list[Pair]:
-    """Top-half vs bottom-half by seed."""
+def _round1_pairings(players: list[PlayerState], top_starts_white: bool) -> list[Pair]:
+    """
+    Top-half vs bottom-half by seed.
+    Colors alternate pair-by-pair; the first pair's color is controlled by
+    top_starts_white (chosen randomly by the caller).
+    """
     sorted_players = sorted(players, key=lambda p: p.seed)
     n = len(sorted_players)
     half = n // 2
     top = sorted_players[:half]
     bottom = sorted_players[half:]
     result = []
-    for p1, p2 in zip(top, bottom):
-        white_id, black_id = _assign_colors(p1, p2)
-        result.append(Pair(white_id=white_id, black_id=black_id))
+    for i, (p1, p2) in enumerate(zip(top, bottom)):
+        # Alternate: even board → use top_starts_white, odd board → flip
+        if top_starts_white if i % 2 == 0 else not top_starts_white:
+            result.append(Pair(white_id=p1.id, black_id=p2.id))
+        else:
+            result.append(Pair(white_id=p2.id, black_id=p1.id))
     return result
 
 

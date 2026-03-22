@@ -1,4 +1,5 @@
 """Unit tests for the Swiss pairing engine."""
+import random
 from decimal import Decimal
 
 from pairing.engine import PlayerState, generate_pairings
@@ -222,11 +223,39 @@ class TestColorAssignment:
                 assert p.black_id is not None
                 assert p.white_id != p.black_id
 
-    def test_deterministic(self):
-        """Same input → same output (no randomness)."""
+    def test_deterministic_with_fixed_rng(self):
+        """Same rng seed → same colors."""
         players = [make_player(i, i) for i in range(1, 9)]
-        pairs1 = generate_pairings(1, players)
-        pairs2 = generate_pairings(1, players)
+        rng1 = random.Random(42)
+        rng2 = random.Random(42)
+        pairs1 = generate_pairings(1, players, rng=rng1)
+        pairs2 = generate_pairings(1, players, rng=rng2)
         for p1, p2 in zip(pairs1, pairs2):
             assert p1.white_id == p2.white_id
             assert p1.black_id == p2.black_id
+
+    def test_colors_alternate(self):
+        """Colors must alternate: if board 1 top is white, board 2 top is black, etc."""
+        players = [make_player(i, i) for i in range(1, 9)]  # seeds 1-8
+        # Run many times — alternation must always hold regardless of random start
+        for seed in range(20):
+            pairs = generate_pairings(1, players, rng=random.Random(seed))
+            games = [p for p in pairs if not p.is_bye]
+            # board i: top-half player id == i (seed 1..4), bottom-half == i+4
+            top_is_white = [p.white_id <= 4 for p in games]
+            for i in range(1, len(top_is_white)):
+                assert top_is_white[i] != top_is_white[i - 1], (
+                    f"seed={seed}: colors not alternating at board {i}"
+                )
+
+    def test_random_start_color(self):
+        """Over many runs the first board gets both colors."""
+        players = [make_player(i, i) for i in range(1, 9)]
+        first_whites = set()
+        for seed in range(40):
+            pairs = generate_pairings(1, players, rng=random.Random(seed))
+            games = [p for p in pairs if not p.is_bye]
+            first_whites.add(games[0].white_id)
+        # Should see both seed-1 (top) and seed-5 (bottom) as white on board 1
+        assert 1 in first_whites
+        assert 5 in first_whites
