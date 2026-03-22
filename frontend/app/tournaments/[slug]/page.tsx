@@ -10,8 +10,9 @@ import {
   standings as standingsApi,
 } from "@/lib/api";
 import type { Pairing, Round, StandingRow, Tournament } from "@/lib/types";
+import { CrossTablePanel } from "@/components/crosstable-panel";
 
-type Tab = "info" | "rounds" | "standings";
+type Tab = "info" | "rounds" | "standings" | "crosstable";
 
 const RESULT_DISPLAY: Record<string, string> = {
   PENDING: "—",
@@ -84,6 +85,7 @@ export default function PublicTournamentPage() {
     { id: "info", label: "Info" },
     { id: "rounds", label: "Rounds" },
     { id: "standings", label: "Standings" },
+    { id: "crosstable", label: "Crosstable" },
   ];
 
   return (
@@ -262,6 +264,9 @@ export default function PublicTournamentPage() {
             </div>
           )}
         </div>
+      )}
+      {tab === "crosstable" && (
+        <CrossTablePanel slug={slug} numRounds={tournament.num_rounds} />
       )}
     </div>
   );
