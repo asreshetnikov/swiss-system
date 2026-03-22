@@ -87,11 +87,17 @@ def _assign_colors(p1: PlayerState, p2: PlayerState) -> tuple[int, int]:
 
 
 def _assign_bye(players: list[PlayerState]) -> Optional[PlayerState]:
-    """Return the player who should receive a bye (last by seed without prior bye)."""
-    candidates = [p for p in reversed(sorted(players, key=lambda x: x.seed)) if not p.bye_received]
+    """Return the player who should receive a bye.
+
+    Assigns bye to the lowest-ranked player who has not yet received a bye.
+    Lowest-ranked = fewest points first; within equal points, worst seed
+    (highest seed number) first — matching the bottom of the standings table.
+    Falls back to the same ordering when everyone has already had a bye.
+    """
+    by_standing = sorted(players, key=lambda p: (p.points, -p.seed))
+    candidates = [p for p in by_standing if not p.bye_received]
     if not candidates:
-        # Everyone has had a bye — fall back to last by seed overall
-        candidates = list(reversed(sorted(players, key=lambda x: x.seed)))
+        candidates = by_standing
     return candidates[0] if candidates else None
 
 

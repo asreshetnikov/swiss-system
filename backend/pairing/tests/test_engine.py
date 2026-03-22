@@ -173,11 +173,25 @@ class TestNoRepeatConstraint:
 
 
 class TestByeAssignment:
-    def test_bye_to_last_seed_without_prior_bye(self):
+    def test_bye_to_last_in_standings(self):
+        """Bye goes to the player last in standings: fewest points, then worst seed."""
         players = [
             make_player(1, 1, points=1.0),
             make_player(2, 2, points=0.5),
-            make_player(3, 3, points=0.0),  # last, no prior bye
+            make_player(3, 3, points=0.0),  # last in standings
+        ]
+        pairs = generate_pairings(2, players)
+        bye_pair = next(p for p in pairs if p.is_bye)
+        assert bye_pair.white_id == 3
+
+    def test_bye_by_points_not_seed(self):
+        """Bye goes to the player with fewest points even if their seed is better."""
+        # p1 has worst seed (3) but 1 point; p3 has best seed (1) but 0 points.
+        # Bye must go to p3 (last in standings), not p1 (last by seed).
+        players = [
+            make_player(1, 3, points=1.0),  # worst seed, but leads on points
+            make_player(2, 2, points=0.5),
+            make_player(3, 1, points=0.0),  # best seed, but last in standings
         ]
         pairs = generate_pairings(2, players)
         bye_pair = next(p for p in pairs if p.is_bye)
@@ -195,7 +209,7 @@ class TestByeAssignment:
         assert bye_pair.white_id != 1
 
     def test_double_bye_forced_when_all_received(self):
-        """If all players had bye, fall back to last by seed."""
+        """If all players had bye, fall back to last in standings."""
         players = [
             make_player(1, 1, points=2.0, bye_received=True),
             make_player(2, 2, points=1.0, bye_received=True),
@@ -204,8 +218,7 @@ class TestByeAssignment:
         pairs = generate_pairings(3, players)
         bye_pairs = [p for p in pairs if p.is_bye]
         assert len(bye_pairs) == 1
-        # Falls back to last seed = 3
-        assert bye_pairs[0].white_id == 3
+        assert bye_pairs[0].white_id == 3  # last in standings
 
 
 # ── Withdrawn players ─────────────────────────────────────────────────────────
