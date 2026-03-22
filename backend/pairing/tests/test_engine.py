@@ -78,6 +78,38 @@ class TestRound1Odd:
 # ── Round 2+ ─────────────────────────────────────────────────────────────────
 
 
+class TestFloaterSelection:
+    def test_floater_chosen_for_color_compatibility(self):
+        """When score group is odd, float the player whose color complements the next group."""
+        # 1-point group (3 players, odd):
+        #   p1 seed=1 due B (CD=+2), p2 seed=2 due W (CD=-2), p3 seed=3 due B (CD=+2)
+        # 0-point group (5 players, all due B):
+        #   next group is B-heavy → ideal floater is someone due W → p2
+        #
+        # Without color-aware logic the worst-ranked player (p3, seed=3, due B)
+        # would float, causing an extra color collision in the 0-point group.
+        # With color-aware logic p2 (due W, seed=2) floats instead.
+        players = [
+            make_player(1, 1, points=1.0, colors_history=["W", "W"], opponents_history=[5]),
+            make_player(2, 2, points=1.0, colors_history=["B", "B"], opponents_history=[6]),
+            make_player(3, 3, points=1.0, colors_history=["W", "W"], opponents_history=[7]),
+            make_player(4, 4, points=0.0, colors_history=["W", "W"], opponents_history=[8]),
+            make_player(5, 5, points=0.0, colors_history=["W"], opponents_history=[1]),
+            make_player(6, 6, points=0.0, colors_history=["W"], opponents_history=[2]),
+            make_player(7, 7, points=0.0, colors_history=["W"], opponents_history=[3]),
+            make_player(8, 8, points=0.0, colors_history=["W"], opponents_history=[4]),
+        ]
+        pairs = generate_pairings(3, players)
+        pair_sets = {frozenset([p.white_id, p.black_id]) for p in pairs if not p.is_bye}
+
+        # p1 and p3 remain in the 1-point group and pair with each other
+        assert frozenset([1, 3]) in pair_sets
+
+        # p2 floated to the 0-point group — not paired with p1 or p3
+        assert frozenset([1, 2]) not in pair_sets
+        assert frozenset([2, 3]) not in pair_sets
+
+
 class TestRound2Grouping:
     def test_score_groups(self):
         """After round 1: 1-0 scores paired together, 0-1 together."""
@@ -208,6 +240,113 @@ class TestWithdrawnExclusion:
         games = [p for p in pairs if not p.is_bye]
         assert len(byes) == 0
         assert len(games) == 1
+
+
+# ── FIDE color assignment ─────────────────────────────────────────────────────
+
+
+class TestFIDEColorAssignment:
+    def test_complementary_each_gets_due(self):
+        """Player due white gets white when paired with player due black."""
+        # p1: played B → due W (CD = -1)
+        # p2: played W → due B (CD = +1)
+        players = [
+            make_player(1, 1, points=1.0, colors_history=["B"], opponents_history=[3]),
+            make_player(2, 2, points=1.0, colors_history=["W"], opponents_history=[4]),
+            make_player(3, 3, points=0.0, colors_history=["W"], opponents_history=[1]),
+            make_player(4, 4, points=0.0, colors_history=["B"], opponents_history=[2]),
+        ]
+        pairs = generate_pairings(2, players)
+        games = [p for p in pairs if not p.is_bye]
+        pair_12 = next(p for p in games if {p.white_id, p.black_id} == {1, 2})
+        assert pair_12.white_id == 1  # due white
+        assert pair_12.black_id == 2  # due black
+
+    def test_conflict_higher_cd_wins(self):
+        """Player with higher |CD| gets their preferred color."""
+        # p1: played W,B,W → CD=+1 → due B (mild)
+        # p2: played W,W,W → CD=+3 → due B (absolute, stronger)
+        # p2 has stronger need → p2 gets black; p1 gets white (violation)
+        players = [
+            make_player(1, 1, points=3.0, colors_history=["W", "B", "W"], opponents_history=[5, 6, 7]),
+            make_player(2, 2, points=3.0, colors_history=["W", "W", "W"], opponents_history=[5, 6, 8]),
+            make_player(5, 5, points=0.0, opponents_history=[1, 2]),
+            make_player(6, 6, points=0.0, opponents_history=[1, 2]),
+            make_player(7, 7, points=0.0, opponents_history=[1]),
+            make_player(8, 8, points=0.0, opponents_history=[2]),
+        ]
+        pairs = generate_pairings(4, players)
+        games = [p for p in pairs if not p.is_bye]
+        pair_12 = next(p for p in games if {p.white_id, p.black_id} == {1, 2})
+        assert pair_12.black_id == 2  # stronger need wins black
+        assert pair_12.white_id == 1
+
+    def test_conflict_equal_cd_higher_ranked_wins(self):
+        """When |CD| is equal, higher-ranked player (better seed) gets their due color."""
+        # Both played W,W → CD=+2 → both due black
+        # p1 (seed 1) is higher-ranked → gets black; p2 gets white (violation)
+        players = [
+            make_player(1, 1, points=2.0, colors_history=["W", "W"], opponents_history=[3, 4]),
+            make_player(2, 2, points=2.0, colors_history=["W", "W"], opponents_history=[3, 4]),
+            make_player(3, 3, points=0.0, opponents_history=[1, 2]),
+            make_player(4, 4, points=0.0, opponents_history=[1, 2]),
+        ]
+        pairs = generate_pairings(3, players)
+        games = [p for p in pairs if not p.is_bye]
+        pair_12 = next(p for p in games if {p.white_id, p.black_id} == {1, 2})
+        assert pair_12.black_id == 1  # higher-ranked gets their due color (black)
+        assert pair_12.white_id == 2
+
+    def test_higher_cd_gets_complementary_over_better_seed(self):
+        """Higher |CD| player gets complementary partner even if their seed is worse."""
+        # CD=[1, 2, -1, 2] with seeds 1,2,3,4 — all same score.
+        # Without |CD|-first sort: p1 (seed=1, CD=1) steals the only complementary
+        #   partner (p3) from p4 (seed=4, CD=2), forcing p4 into a violation.
+        # With |CD|-first sort: p2 (CD=2) and p4 (CD=2) are processed before
+        #   p1 (CD=1), so both CD=2 players get black.
+        players = [
+            make_player(1, 1, points=1.0, colors_history=["B"], opponents_history=[5]),
+            make_player(2, 2, points=1.0, colors_history=["W", "W"], opponents_history=[6]),
+            make_player(3, 3, points=1.0, colors_history=["B", "B"], opponents_history=[7]),
+            make_player(4, 4, points=1.0, colors_history=["W", "W"], opponents_history=[8]),
+            make_player(5, 5, points=0.0, opponents_history=[1]),
+            make_player(6, 6, points=0.0, opponents_history=[2]),
+            make_player(7, 7, points=0.0, opponents_history=[3]),
+            make_player(8, 8, points=0.0, opponents_history=[4]),
+        ]
+        pairs = generate_pairings(3, players)
+        games = [p for p in pairs if not p.is_bye]
+        # p2 (CD=+2) and p4 (CD=+2) must get black; p3 (CD=-2) gets white
+        pair_24 = next((p for p in games if {p.white_id, p.black_id} == {2, 3}), None)
+        pair_44 = next((p for p in games if {p.white_id, p.black_id} == {4, 3}), None)
+        # One of them pairs with p3 (the only due-W player in top group)
+        if pair_24:
+            assert pair_24.black_id == 2
+        if pair_44:
+            assert pair_44.black_id == 4
+        # The remaining CD=2 player wins their conflict and also gets black
+        for p in games:
+            if p.white_id in {2, 4} or p.black_id in {2, 4}:
+                assert p.black_id in {2, 4}, f"CD=2 player {p.white_id} got white"
+
+    def test_prefers_complementary_over_same_due(self):
+        """Within a score group, prefers pairing with complementary-color player."""
+        # p1 (due W), p2 (due W), p3 (due B) — all 1pt, no repeats among them
+        # Without color preference: greedy pairs p1 vs p2 (first available)
+        # With FIDE logic: p1 pairs with p3 (complementary), p2 floats
+        players = [
+            make_player(1, 1, points=1.0, colors_history=["B"], opponents_history=[4]),
+            make_player(2, 2, points=1.0, colors_history=["B"], opponents_history=[5]),
+            make_player(3, 3, points=1.0, colors_history=["W"], opponents_history=[6]),
+            make_player(4, 4, points=0.0, colors_history=["W"], opponents_history=[1]),
+            make_player(5, 5, points=0.0, colors_history=["W"], opponents_history=[2]),
+            make_player(6, 6, points=0.0, colors_history=["B"], opponents_history=[3]),
+        ]
+        pairs = generate_pairings(2, players)
+        games = [p for p in pairs if not p.is_bye]
+        pair_sets = {frozenset([p.white_id, p.black_id]) for p in games}
+        assert frozenset([1, 3]) in pair_sets  # complementary pairing
+        assert frozenset([1, 2]) not in pair_sets  # same-due pairing avoided
 
 
 # ── Color assignment ──────────────────────────────────────────────────────────

@@ -33,32 +33,57 @@ def _active(players: list[PlayerState]) -> list[PlayerState]:
     return [p for p in players if p.status == "ACTIVE"]
 
 
-def _color_preference(player: PlayerState) -> str:
-    """Return preferred next color ('W' or 'B') based on history."""
+def _cd(player: PlayerState) -> int:
+    """Signed color difference: whites played minus blacks played."""
+    return player.colors_history.count("W") - player.colors_history.count("B")
+
+
+def _color_due(player: PlayerState) -> str:
+    """Return the color this player is due next ('W' or 'B').
+
+    CD = whites - blacks:
+      CD > 0 → due black
+      CD < 0 → due white
+      CD = 0 → prefer opposite of last game; if no history, prefer white
+    """
     whites = player.colors_history.count("W")
     blacks = player.colors_history.count("B")
-    if whites > blacks:
+    cd = whites - blacks
+    if cd > 0:
         return "B"
-    if blacks > whites:
+    if cd < 0:
         return "W"
-    # Equal — prefer opposite of last
     if player.colors_history:
         return "B" if player.colors_history[-1] == "W" else "W"
     return "W"
 
 
 def _assign_colors(p1: PlayerState, p2: PlayerState) -> tuple[int, int]:
-    """Return (white_id, black_id)."""
-    pref1 = _color_preference(p1)
-    pref2 = _color_preference(p2)
-    if pref1 == "W" and pref2 != "W":
-        return p1.id, p2.id
-    if pref2 == "W" and pref1 != "W":
-        return p2.id, p1.id
-    # Both same preference — give white to higher seed (lower number = better seed)
-    if p1.seed < p2.seed:
-        return p1.id, p2.id
-    return p2.id, p1.id
+    """Return (white_id, black_id) per FIDE Dutch System rules.
+
+    p1 is assumed to be the higher-ranked player (better score / lower seed).
+
+    Complementary preferences: each player gets their due color.
+    Same preference (color conflict): the player with higher |CD| gets their
+    due color; if |CD| is equal, p1 (higher-ranked) gets their due color.
+    """
+    due1 = _color_due(p1)
+    due2 = _color_due(p2)
+
+    if due1 != due2:
+        # Complementary — each gets what they're due
+        white, black = (p1, p2) if due1 == "W" else (p2, p1)
+        return white.id, black.id
+
+    # Conflict: both due the same color.
+    # Determine who wins: higher |CD| takes priority; ties go to p1 (higher-ranked).
+    winner, loser = (p1, p2) if abs(_cd(p1)) >= abs(_cd(p2)) else (p2, p1)
+
+    # Winner gets their due color (same for both since they're in conflict)
+    if due1 == "W":
+        return winner.id, loser.id
+    else:
+        return loser.id, winner.id
 
 
 def _assign_bye(players: list[PlayerState]) -> Optional[PlayerState]:
@@ -127,6 +152,36 @@ def _round1_pairings(players: list[PlayerState], top_starts_white: bool) -> list
     return result
 
 
+def _choose_floater(
+    candidates: list[PlayerState],
+    next_players: list[PlayerState],
+) -> PlayerState:
+    """
+    Choose which player floats down from the current score group to the next.
+
+    Iterates candidates from worst-ranked to best-ranked (reverse of the
+    sorted order: highest seed / lowest |CD| first).
+
+    Prefers a player whose color_due complements the dominant color need of
+    next_players, reducing color collisions in the next group.
+    Falls back to the worst-ranked candidate when no preferred choice exists.
+    """
+    if next_players:
+        due_counts: dict[str, int] = {"W": 0, "B": 0}
+        for p in next_players:
+            due_counts[_color_due(p)] += 1
+
+        if due_counts["B"] != due_counts["W"]:
+            # Float someone whose due color complements the next group's majority
+            preferred_due = "W" if due_counts["B"] > due_counts["W"] else "B"
+            for candidate in reversed(candidates):
+                if _color_due(candidate) == preferred_due:
+                    return candidate
+
+    # No preferred candidate (or next group is balanced) — worst-ranked player
+    return candidates[-1]
+
+
 def _swiss_pairings(players: list[PlayerState]) -> list[Pair]:
     """
     Round 2+: group by points (desc), pair within groups.
@@ -147,13 +202,30 @@ def _swiss_pairings(players: list[PlayerState]) -> list[Pair]:
     unpaired: list[PlayerState] = []
     result: list[Pair] = []
 
-    for score in score_keys:
-        group = unpaired + groups[score]
+    for i, score in enumerate(score_keys):
+        # Within each score group: higher |CD| first, then seed ascending.
+        # This ensures players with greater color imbalance get first pick of
+        # complementary-color opponents.
+        current = sorted(groups[score], key=lambda p: (-abs(_cd(p)), p.seed))
+        group = unpaired + current
         unpaired = []
 
-        # Try to pair within the group
+        # If group has odd count, pre-select the down-floater using color-aware
+        # logic. Only native group players (current) are candidates — players
+        # already floating down (prepended as unpaired) stay in the group.
+        pre_floater: Optional[PlayerState] = None
+        if len(group) % 2 == 1:
+            next_score_players = (
+                groups[score_keys[i + 1]] if i + 1 < len(score_keys) else []
+            )
+            pre_floater = _choose_floater(current, next_score_players)
+            group = [p for p in group if p.id != pre_floater.id]
+
         group_pairs, leftover = _pair_group(group)
         result.extend(group_pairs)
+
+        if pre_floater is not None:
+            unpaired.append(pre_floater)
         unpaired.extend(leftover)
 
     # Handle any remaining — force pair even if repeat (last resort)
@@ -169,8 +241,13 @@ def _swiss_pairings(players: list[PlayerState]) -> list[Pair]:
 
 def _pair_group(players: list[PlayerState]) -> tuple[list[Pair], list[PlayerState]]:
     """
-    Greedily pair players in the group, avoiding repeat opponents.
-    Players who cannot be paired without a repeat float to the next group.
+    Pair players in the group per FIDE Dutch System color rules.
+
+    Two-pass search for each player:
+      Pass 1 — complementary color due + no repeat opponent (ideal).
+      Pass 2 — any non-repeat opponent (color violation accepted).
+
+    Players with no valid non-repeat opponent float to the next score group.
     Returns (pairs, unpaired_floaters).
     """
     remaining = list(players)
@@ -179,18 +256,30 @@ def _pair_group(players: list[PlayerState]) -> tuple[list[Pair], list[PlayerStat
 
     while remaining:
         p1 = remaining.pop(0)
+        due1 = _color_due(p1)
         paired = False
+
+        # Pass 1: complementary color + no repeat
         for i, p2 in enumerate(remaining):
-            if p2.id not in p1.opponents_history:
+            if p2.id not in p1.opponents_history and _color_due(p2) != due1:
                 remaining.pop(i)
                 white_id, black_id = _assign_colors(p1, p2)
                 pairs.append(Pair(white_id=white_id, black_id=black_id))
                 paired = True
                 break
+
         if not paired:
-            # No valid (non-repeat) opponent found — float this player down
+            # Pass 2: any non-repeat (color violation accepted)
+            for i, p2 in enumerate(remaining):
+                if p2.id not in p1.opponents_history:
+                    remaining.pop(i)
+                    white_id, black_id = _assign_colors(p1, p2)
+                    pairs.append(Pair(white_id=white_id, black_id=black_id))
+                    paired = True
+                    break
+
+        if not paired:
             floaters.append(p1)
 
-    # Any single leftover (odd group) also floats
     floaters.extend(remaining)
     return pairs, floaters
