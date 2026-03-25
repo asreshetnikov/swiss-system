@@ -11,7 +11,8 @@ Swiss-system chess tournament management platform.
 ## Quick Start
 
 ```bash
-docker-compose up
+cp backend/.env.example backend/.env
+docker-compose up --build
 ```
 
 - Backend API: http://localhost:8000/api/
