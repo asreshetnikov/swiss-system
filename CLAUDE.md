@@ -35,7 +35,8 @@ npm run lint    # ESLint
 
 ### Docker (full stack)
 ```bash
-docker-compose up --build   # starts db:5432, backend:8000, frontend:3000
+cp backend/.env.example backend/.env   # first time only
+docker-compose up --build              # starts db:5432, backend:8000, frontend:3000
 ```
 
 ## Architecture
@@ -51,11 +52,11 @@ docker-compose up --build   # starts db:5432, backend:8000, frontend:3000
 - `pairing` — Pure pairing logic in `engine.py`, **no ORM**, fully unit-tested
 - `audit` — Append-only `AuditLog`
 
-**Pairing engine** (`pairing/engine.py`): Takes `list[PlayerState]` → returns `list[Pair]`. Round 1: top-half vs bottom-half by seed. Round 2+: group by score, avoid repeats, float unpaired players down score groups. Bye goes to lowest-seeded player without a prior bye.
+**Pairing engine** (`pairing/engine.py`): Takes `list[PlayerState]` → returns `list[Pair]`. Round 1: top-half vs bottom-half by seed, colors alternate per board, first board color is random. Round 2+: group by score (desc), within group sort by `(-|CD|, seed)`, two-pass pairing (complementary color + no repeat → any non-repeat), color-aware floater selection for odd groups. Bye goes to the lowest-ranked player by standings (points ASC, seed DESC) without a prior bye. FIDE Dutch System (C.04).
 
 **Standings calculator** (`standings/calculator.py`): Recalculates from raw pairing results. Tiebreak order is configurable via `tournament.tiebreak_order` (JSON list of strings: `"points"`, `"buchholz"`, `"wins"`, `"head_to_head"`, `"seed"`).
 
-**Config:** `backend/config/` holds `settings.py` and root `urls.py`. Environment loaded from `.env` (see `docker-compose.yml` for variable names). `DATABASE_URL=""` falls back to SQLite for local dev.
+**Config:** `backend/config/` holds `settings.py` and root `urls.py`. Environment loaded from `.env` (copy from `backend/.env.example`). `DATABASE_URL=""` falls back to SQLite for local dev without Docker.
 
 ### Frontend (Next.js 14 App Router)
 
@@ -63,7 +64,7 @@ docker-compose up --build   # starts db:5432, backend:8000, frontend:3000
 - `/` — landing
 - `/login`, `/register` — auth
 - `/dashboard` — owner's tournament list (auth-gated)
-- `/tournaments/[slug]` — public view (Info / Rounds / Standings tabs)
+- `/tournaments/[slug]` — public view (Info / Rounds / Standings / Crosstable tabs)
 - `/tournaments/[slug]/admin` — owner panel (Overview / Participants / Pairings / Standings tabs)
 
 **Key files:**
