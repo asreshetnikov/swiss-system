@@ -43,7 +43,7 @@ export const auth = {
   register: (data: { email: string; password: string; display_name?: string }) =>
     request<User>("/auth/register/", { method: "POST", body: JSON.stringify(data) }),
 
-  login: (data: { email: string; password: string }) =>
+  login: (data: { email: string; password: string; remember_me?: boolean }) =>
     request<User>("/auth/login/", { method: "POST", body: JSON.stringify(data) }),
 
   logout: () =>
