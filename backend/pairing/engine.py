@@ -168,23 +168,38 @@ def _choose_floater(
     Iterates candidates from worst-ranked to best-ranked (reverse of the
     sorted order: highest seed / lowest |CD| first).
 
-    Prefers a player whose color_due complements the dominant color need of
-    next_players, reducing color collisions in the next group.
+    Two criteria, applied in order:
+    1. Avoid sending a player who has already played *all* players in the next
+       group — that would force a repeat match in the receiving group.
+    2. Prefer a player whose color_due complements the dominant color need of
+       next_players, reducing color collisions in the next group.
+
     Falls back to the worst-ranked candidate when no preferred choice exists.
     """
+    def _has_fresh_opponent(candidate: PlayerState) -> bool:
+        """True if the candidate has at least one unplayed opponent in next_players."""
+        return any(p.id not in candidate.opponents_history for p in next_players)
+
     if next_players:
         due_counts: dict[str, int] = {"W": 0, "B": 0}
         for p in next_players:
             due_counts[_color_due(p)] += 1
 
         if due_counts["B"] != due_counts["W"]:
-            # Float someone whose due color complements the next group's majority
+            # Float someone whose due color complements the next group's majority,
+            # but only if they haven't already played everyone down there.
             preferred_due = "W" if due_counts["B"] > due_counts["W"] else "B"
             for candidate in reversed(candidates):
-                if _color_due(candidate) == preferred_due:
+                if _color_due(candidate) == preferred_due and _has_fresh_opponent(candidate):
                     return candidate
 
-    # No preferred candidate (or next group is balanced) — worst-ranked player
+    # No color-preferred candidate found — pick worst-ranked that avoids a forced repeat
+    for candidate in reversed(candidates):
+        if _has_fresh_opponent(candidate):
+            return candidate
+
+    # All candidates have played everyone in the next group — unavoidable repeat;
+    # return worst-ranked as last resort.
     return candidates[-1]
 
 

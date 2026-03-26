@@ -168,6 +168,33 @@ class TestNoRepeatConstraint:
         assert len(pairs) == 1
         assert not pairs[0].is_bye
 
+    def test_floater_does_not_repeat_sole_player_in_next_group(self):
+        """
+        When a score group is odd and must send a floater down, the floater
+        must not be a player who has already played everyone in the receiving
+        group — that would force a repeat.
+
+        Setup (round 3):
+          Group 2.0 : p1  (solo → floats to 1.0 group)
+          Group 1.0 : p2 (hasn't played p4), p3 (has played p4)
+          Group 0.0 : p4
+
+        Without the fix, p3 would be chosen as floater because its color_due
+        complements p4's, resulting in a p3–p4 repeat.
+        With the fix, p2 is chosen instead.
+        """
+        p1 = make_player(1, 1, points=2.0, colors_history=["W", "B"], opponents_history=[10, 11])
+        p2 = make_player(2, 2, points=1.0, colors_history=["W", "B"], opponents_history=[10, 11])
+        # p3 has already played p4
+        p3 = make_player(3, 3, points=1.0, colors_history=["B", "W"], opponents_history=[4, 11])
+        p4 = make_player(4, 4, points=0.0, colors_history=["W", "B"], opponents_history=[3, 11])
+
+        pairs = generate_pairings(3, [p1, p2, p3, p4], rng=random.Random(42))
+        games = [p for p in pairs if not p.is_bye]
+
+        pair_sets = {frozenset([p.white_id, p.black_id]) for p in games}
+        assert frozenset([3, 4]) not in pair_sets, "p3 and p4 must not be paired again"
+
 
 # ── Bye assignment ────────────────────────────────────────────────────────────
 
