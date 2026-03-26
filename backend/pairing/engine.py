@@ -232,14 +232,16 @@ def _swiss_pairings(players: list[PlayerState]) -> list[Pair]:
         unpaired = []
 
         # If group has odd count, pre-select the down-floater using color-aware
-        # logic. Only native group players (current) are candidates — players
-        # already floating down (prepended as unpaired) stay in the group.
+        # logic. Native players (current) are tried first because they are at the
+        # tail of `group` in reversed order — only if none of them can provide a
+        # fresh opponent in the next group does the algorithm allow a player who
+        # already floated down from above to cascade further.
         pre_floater: Optional[PlayerState] = None
         if len(group) % 2 == 1:
             next_score_players = (
                 groups[score_keys[i + 1]] if i + 1 < len(score_keys) else []
             )
-            pre_floater = _choose_floater(current, next_score_players)
+            pre_floater = _choose_floater(group, next_score_players)
             group = [p for p in group if p.id != pre_floater.id]
 
         group_pairs, leftover = _pair_group(group)

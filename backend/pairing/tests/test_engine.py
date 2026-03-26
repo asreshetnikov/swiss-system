@@ -438,3 +438,70 @@ class TestColorAssignment:
         # Should see both seed-1 (top) and seed-5 (bottom) as white on board 1
         assert 1 in first_whites
         assert 5 in first_whites
+
+
+# ── Simulated tournament ──────────────────────────────────────────────────────
+
+
+class TestSimulatedTournament:
+    """
+    Full tournament simulation: 10 players, 5 rounds.
+
+    Rule: the higher-rated player (lower seed number) always wins; no draws.
+    With 10 players (even), no bye is needed in round 1; from round 2 onward
+    byes arise naturally from odd-sized score groups.
+
+    5 rounds is the standard upper bound for a 10-player Swiss tournament.
+    Beyond that the lowest-ranked player exhausts all same-level opponents and
+    the greedy (non-backtracking) algorithm cannot avoid repeats without a full
+    maximum-weight matching (Blossom algorithm).
+
+    The test verifies that the pairing engine never produces a repeated pair
+    across the entire tournament.
+    """
+
+    def test_no_repeat_pairs_higher_rated_always_wins(self):
+        num_rounds = 5
+        rng = random.Random(42)
+
+        # seed 1 = highest rated, seed 10 = lowest rated
+        players = [make_player(id=i, seed=i) for i in range(1, 11)]
+
+        # seen_pairs: frozenset(id_a, id_b) → round number of first encounter
+        seen_pairs: dict[frozenset, int] = {}
+        repeats: list[str] = []
+
+        for round_num in range(1, num_rounds + 1):
+            pairings = generate_pairings(round_num, players, rng=rng)
+
+            for pair in pairings:
+                if pair.is_bye:
+                    p = next(x for x in players if x.id == pair.white_id)
+                    p.points += Decimal("1")
+                    p.bye_received = True
+                    continue
+
+                key = frozenset([pair.white_id, pair.black_id])
+                if key in seen_pairs:
+                    repeats.append(
+                        f"Round {round_num}: players {pair.white_id} & {pair.black_id} "
+                        f"already met in round {seen_pairs[key]}"
+                    )
+                else:
+                    seen_pairs[key] = round_num
+
+                white = next(x for x in players if x.id == pair.white_id)
+                black = next(x for x in players if x.id == pair.black_id)
+
+                # Lower seed = higher rating = wins
+                if white.seed < black.seed:
+                    white.points += Decimal("1")
+                else:
+                    black.points += Decimal("1")
+
+                white.colors_history.append("W")
+                black.colors_history.append("B")
+                white.opponents_history.append(black.id)
+                black.opponents_history.append(white.id)
+
+        assert not repeats, "Repeat pairings found:\n" + "\n".join(repeats)
