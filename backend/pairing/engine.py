@@ -251,13 +251,25 @@ def _swiss_pairings(players: list[PlayerState]) -> list[Pair]:
             unpaired.append(pre_floater)
         unpaired.extend(leftover)
 
-    # Handle any remaining — force pair even if repeat (last resort)
+    # Handle any remaining leftovers — avoid repeats among them; force only as
+    # true last resort when every remaining candidate is a prior opponent.
     if len(unpaired) >= 2:
         while len(unpaired) >= 2:
             p1 = unpaired.pop(0)
-            p2 = unpaired.pop(0)
-            white_id, black_id = _assign_colors(p1, p2)
-            result.append(Pair(white_id=white_id, black_id=black_id))
+            # Prefer the first non-repeat opponent among leftovers
+            paired = False
+            for i, p2 in enumerate(unpaired):
+                if p2.id not in p1.opponents_history:
+                    unpaired.pop(i)
+                    white_id, black_id = _assign_colors(p1, p2)
+                    result.append(Pair(white_id=white_id, black_id=black_id))
+                    paired = True
+                    break
+            if not paired:
+                # Every remaining player has been p1's opponent — unavoidable repeat
+                p2 = unpaired.pop(0)
+                white_id, black_id = _assign_colors(p1, p2)
+                result.append(Pair(white_id=white_id, black_id=black_id))
 
     return result
 
@@ -278,7 +290,15 @@ def _pair_group(players: list[PlayerState]) -> tuple[list[Pair], list[PlayerStat
     floaters: list[PlayerState] = []
 
     while remaining:
-        p1 = remaining.pop(0)
+        # Most-constrained-first: pick the player with the fewest valid
+        # (non-repeat) opponents to reduce dead ends — MRV heuristic.
+        def _valid_count(p: PlayerState) -> int:
+            return sum(
+                1 for q in remaining if q.id != p.id and q.id not in p.opponents_history
+            )
+
+        idx = min(range(len(remaining)), key=lambda i: _valid_count(remaining[i]))
+        p1 = remaining.pop(idx)
         due1 = _color_due(p1)
         paired = False
 

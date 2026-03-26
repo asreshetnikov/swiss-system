@@ -1,6 +1,9 @@
 """Unit tests for the Swiss pairing engine."""
+import math
 import random
 from decimal import Decimal
+
+import pytest
 
 from pairing.engine import PlayerState, generate_pairings
 
@@ -443,65 +446,74 @@ class TestColorAssignment:
 # ── Simulated tournament ──────────────────────────────────────────────────────
 
 
+def _simulate_tournament(num_players: int, num_rounds: int, rng_seed: int = 42) -> list[str]:
+    """
+    Run a full Swiss tournament simulation and return a list of repeat-pair descriptions.
+
+    Rules: seed 1 = highest rated; lower seed always wins; no draws.
+    Bye counts as a win for the bye recipient.
+    """
+    players = [make_player(id=i, seed=i) for i in range(1, num_players + 1)]
+    seen_pairs: dict[frozenset, int] = {}
+    repeats: list[str] = []
+    rng = random.Random(rng_seed)
+
+    for round_num in range(1, num_rounds + 1):
+        pairings = generate_pairings(round_num, players, rng=rng)
+
+        for pair in pairings:
+            if pair.is_bye:
+                p = next(x for x in players if x.id == pair.white_id)
+                p.points += Decimal("1")
+                p.bye_received = True
+                continue
+
+            key = frozenset([pair.white_id, pair.black_id])
+            if key in seen_pairs:
+                repeats.append(
+                    f"Round {round_num}: players {pair.white_id} & {pair.black_id} "
+                    f"already met in round {seen_pairs[key]}"
+                )
+            else:
+                seen_pairs[key] = round_num
+
+            white = next(x for x in players if x.id == pair.white_id)
+            black = next(x for x in players if x.id == pair.black_id)
+
+            if white.seed < black.seed:
+                white.points += Decimal("1")
+            else:
+                black.points += Decimal("1")
+
+            white.colors_history.append("W")
+            black.colors_history.append("B")
+            white.opponents_history.append(black.id)
+            black.opponents_history.append(white.id)
+
+    return repeats
+
+
 class TestSimulatedTournament:
     """
-    Full tournament simulation: 10 players, 5 rounds.
+    Full tournament simulations for 7–32 players.
 
     Rule: the higher-rated player (lower seed number) always wins; no draws.
-    With 10 players (even), no bye is needed in round 1; from round 2 onward
-    byes arise naturally from odd-sized score groups.
-
-    5 rounds is the standard upper bound for a 10-player Swiss tournament.
-    Beyond that the lowest-ranked player exhausts all same-level opponents and
-    the greedy (non-backtracking) algorithm cannot avoid repeats without a full
-    maximum-weight matching (Blossom algorithm).
+    Number of rounds = ceil(log2(n)), the standard Swiss upper bound.
 
     The test verifies that the pairing engine never produces a repeated pair
     across the entire tournament.
+
+    Note: the greedy (non-backtracking) algorithm can produce repeats when the
+    lowest-ranked player exhausts all same-level opponents in very long
+    tournaments (beyond ceil(log2(n)) rounds). A full maximum-weight matching
+    (Blossom algorithm) would be required to guarantee no repeats in that case.
     """
 
-    def test_no_repeat_pairs_higher_rated_always_wins(self):
-        num_rounds = 5
-        rng = random.Random(42)
-
-        # seed 1 = highest rated, seed 10 = lowest rated
-        players = [make_player(id=i, seed=i) for i in range(1, 11)]
-
-        # seen_pairs: frozenset(id_a, id_b) → round number of first encounter
-        seen_pairs: dict[frozenset, int] = {}
-        repeats: list[str] = []
-
-        for round_num in range(1, num_rounds + 1):
-            pairings = generate_pairings(round_num, players, rng=rng)
-
-            for pair in pairings:
-                if pair.is_bye:
-                    p = next(x for x in players if x.id == pair.white_id)
-                    p.points += Decimal("1")
-                    p.bye_received = True
-                    continue
-
-                key = frozenset([pair.white_id, pair.black_id])
-                if key in seen_pairs:
-                    repeats.append(
-                        f"Round {round_num}: players {pair.white_id} & {pair.black_id} "
-                        f"already met in round {seen_pairs[key]}"
-                    )
-                else:
-                    seen_pairs[key] = round_num
-
-                white = next(x for x in players if x.id == pair.white_id)
-                black = next(x for x in players if x.id == pair.black_id)
-
-                # Lower seed = higher rating = wins
-                if white.seed < black.seed:
-                    white.points += Decimal("1")
-                else:
-                    black.points += Decimal("1")
-
-                white.colors_history.append("W")
-                black.colors_history.append("B")
-                white.opponents_history.append(black.id)
-                black.opponents_history.append(white.id)
-
-        assert not repeats, "Repeat pairings found:\n" + "\n".join(repeats)
+    @pytest.mark.parametrize("num_players", range(7, 33))
+    def test_no_repeat_pairs_higher_rated_always_wins(self, num_players: int):
+        num_rounds = math.ceil(math.log2(num_players))
+        repeats = _simulate_tournament(num_players, num_rounds)
+        assert not repeats, (
+            f"{num_players} players, {num_rounds} rounds — repeat pairings:\n"
+            + "\n".join(repeats)
+        )
