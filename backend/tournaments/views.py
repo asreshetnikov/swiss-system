@@ -1,5 +1,6 @@
 
 from django.db import transaction
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from participants.models import Participant
+from rounds.models import Round
+from standings.calculator import calculate_standings
 
 from .models import Tournament
 from .serializers import TournamentSerializer, TournamentStatusSerializer
@@ -82,6 +85,62 @@ class TournamentStatusView(APIView):
         tournament.status = new_status
         tournament.save()
         return Response(TournamentSerializer(tournament).data)
+
+
+class TournamentExportView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug):
+        tournament = get_object_or_404(Tournament, slug=slug)
+
+        standings = calculate_standings(tournament)
+
+        rounds = list(
+            tournament.rounds
+            .filter(status__in=[Round.Status.PUBLISHED, Round.Status.CLOSED])
+            .prefetch_related("pairings__white", "pairings__black")
+            .order_by("number")
+        )
+        round_numbers = [r.number for r in rounds]
+
+        # Build crosstable: participant_id → round_number → {symbol, color, opponent}
+        W_SYM = {"WHITE_WIN": "1", "BLACK_WIN": "0", "DRAW": "½", "FORFEIT": "FF", "PENDING": "—"}
+        B_SYM = {"WHITE_WIN": "0", "BLACK_WIN": "1", "DRAW": "½", "FORFEIT": "FF", "PENDING": "—"}
+
+        crosstable: dict = {row["participant_id"]: {} for row in standings}
+
+        for round_obj in rounds:
+            for pairing in round_obj.pairings.all():
+                if pairing.is_bye and pairing.white_id:
+                    if pairing.white_id in crosstable:
+                        crosstable[pairing.white_id][round_obj.number] = {
+                            "symbol": "bye", "color": None, "opponent": None
+                        }
+                elif pairing.white_id and pairing.black_id:
+                    w_name = pairing.white.name if pairing.white else "—"
+                    b_name = pairing.black.name if pairing.black else "—"
+                    sym = pairing.result
+                    if pairing.white_id in crosstable:
+                        crosstable[pairing.white_id][round_obj.number] = {
+                            "symbol": W_SYM.get(sym, "—"), "color": "W", "opponent": b_name
+                        }
+                    if pairing.black_id in crosstable:
+                        crosstable[pairing.black_id][round_obj.number] = {
+                            "symbol": B_SYM.get(sym, "—"), "color": "B", "opponent": w_name
+                        }
+
+        for row in standings:
+            pid = row["participant_id"]
+            row["round_results"] = [
+                crosstable.get(pid, {}).get(rnum) for rnum in round_numbers
+            ]
+
+        return render(request, "tournaments/export.html", {
+            "tournament": tournament,
+            "standings": standings,
+            "rounds": rounds,
+            "round_numbers": round_numbers,
+        })
 
 
 def _assign_seeds(tournament: Tournament):

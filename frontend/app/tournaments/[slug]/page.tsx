@@ -80,6 +80,7 @@ export default function PublicTournamentPage() {
   if (!tournament) return <div className="text-red-600">Tournament not found</div>;
 
   const isOwner = user?.email === tournament.owner_email;
+  const exportUrl = `${process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : "/api"}/tournaments/${slug}/export/`;
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "info", label: "Info" },
@@ -92,14 +93,24 @@ export default function PublicTournamentPage() {
     <div>
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl font-bold">{tournament.name}</h1>
-        {isOwner && (
-          <Link
-            href={`/tournaments/${slug}/admin`}
-            className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+        <div className="flex items-center gap-2">
+          <a
+            href={exportUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm border border-gray-300 text-gray-600 px-3 py-1.5 rounded hover:bg-gray-50"
           >
-            Admin
-          </Link>
-        )}
+            Export HTML
+          </a>
+          {isOwner && (
+            <Link
+              href={`/tournaments/${slug}/admin`}
+              className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+            >
+              Admin
+            </Link>
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-2 mb-6">
         <span className="text-sm bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ tournament.name }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      color: #111;
+      padding: 24px 32px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .tournament-title { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+    .tournament-meta { color: #666; font-size: 12px; margin-bottom: 6px; }
+    .tournament-desc { color: #444; margin-bottom: 16px; }
+
+    /* Section headings */
+    h2 {
+      font-size: 15px;
+      font-weight: bold;
+      margin: 28px 0 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #333;
+    }
+    h3 {
+      font-size: 13px;
+      font-weight: bold;
+      margin: 18px 0 6px;
+      color: #444;
+    }
+
+    /* Tables */
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d0d0; padding: 5px 10px; }
+    th { background: #f0f0f0; font-weight: bold; text-align: left; white-space: nowrap; }
+    tr:nth-child(even) td { background: #fafafa; }
+
+    /* Crosstable specific */
+    .ct-rank { width: 36px; text-align: center; color: #666; }
+    .ct-pts  { width: 48px; text-align: center; font-weight: bold; }
+    .ct-bh   { width: 48px; text-align: center; color: #555; }
+    .ct-cell { text-align: center; white-space: nowrap; min-width: 42px; }
+
+    /* Color dot */
+    .dot {
+      display: inline-block;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 2px;
+    }
+    .dot-w { background: #fff; border: 1.5px solid #555; }
+    .dot-b { background: #222; border: 1.5px solid #222; }
+
+    /* Result colouring */
+    .r-win  { font-weight: bold; color: #155724; }
+    .r-loss { color: #721c24; }
+    .r-draw { color: #004085; }
+    .r-bye  { color: #888; font-size: 11px; }
+    .r-ff   { color: #888; }
+    .r-pen  { color: #bbb; }
+
+    /* Rounds section */
+    .round-block { margin-bottom: 20px; }
+    .result-cell { text-align: center; width: 64px; font-weight: bold; }
+
+    /* Print */
+    @media print {
+      body { padding: 0; max-width: 100%; font-size: 11px; }
+      h2 { font-size: 13px; }
+      th, td { padding: 3px 6px; }
+      .page-break { page-break-before: always; }
+      .dot-w { border: 1.5px solid #000; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="tournament-title">{{ tournament.name }}</div>
+  <div class="tournament-meta">
+    {{ tournament.status }}{% if tournament.time_control %} &nbsp;·&nbsp; {{ tournament.time_control }}{% endif %} &nbsp;·&nbsp; {{ tournament.num_rounds }} rounds
+  </div>
+  {% if tournament.description %}
+  <div class="tournament-desc">{{ tournament.description }}</div>
+  {% endif %}
+
+  <!-- ===================== CROSSTABLE ===================== -->
+  <h2>Crosstable</h2>
+  {% if standings %}
+  <div style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr>
+        <th class="ct-rank">#</th>
+        <th>Name</th>
+        {% if standings.0.rating %}<th style="width:52px">Rtg</th>{% endif %}
+        {% for rnum in round_numbers %}<th class="ct-cell">R{{ rnum }}</th>{% endfor %}
+        <th class="ct-pts">Pts</th>
+        <th class="ct-bh">BH</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in standings %}
+      <tr>
+        <td class="ct-rank">{{ row.rank }}</td>
+        <td>{{ row.name }}</td>
+        {% if standings.0.rating %}<td style="text-align:center;color:#666">{{ row.rating|default:"—" }}</td>{% endif %}
+        {% for cell in row.round_results %}
+        <td class="ct-cell">
+          {% if cell %}
+            {% if cell.color == 'W' %}<span class="dot dot-w"></span>{% elif cell.color == 'B' %}<span class="dot dot-b"></span>{% endif %}
+            <span class="
+              {%  if cell.symbol == '1'   %}r-win
+              {% elif cell.symbol == '0'   %}r-loss
+              {% elif cell.symbol == '½'   %}r-draw
+              {% elif cell.symbol == 'bye' %}r-bye
+              {% elif cell.symbol == 'FF'  %}r-ff
+              {% else                      %}r-pen{% endif %}">{{ cell.symbol }}</span>
+          {% else %}
+            <span class="r-pen">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+        <td class="ct-pts">{{ row.points }}</td>
+        <td class="ct-bh">{{ row.buchholz|floatformat:1 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div style="margin-top:8px;font-size:11px;color:#888">
+    <span style="margin-right:12px"><span class="dot dot-w" style="display:inline-block"></span> White</span>
+    <span><span class="dot dot-b" style="display:inline-block"></span> Black</span>
+    &nbsp;·&nbsp; BH = Buchholz coefficient
+  </div>
+  {% else %}
+  <p style="color:#888">No standings available yet.</p>
+  {% endif %}
+
+  <!-- ===================== ROUNDS ===================== -->
+  <div class="page-break"></div>
+  <h2>Results by Round</h2>
+
+  {% for round_obj in rounds %}
+  <div class="round-block">
+    <h3>Round {{ round_obj.number }}{% if round_obj.status == 'CLOSED' %} &nbsp;✓{% endif %}</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;text-align:center">Bd</th>
+          <th>White</th>
+          <th class="result-cell">Result</th>
+          <th>Black</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pairing in round_obj.pairings.all %}
+        <tr>
+          <td style="text-align:center;color:#888">{{ pairing.board_number }}</td>
+          {% if pairing.is_bye %}
+          <td colspan="3">
+            {{ pairing.white.name|default:pairing.black.name|default:"—" }}
+            <span style="color:#999;font-size:11px;margin-left:6px">— BYE —</span>
+          </td>
+          {% else %}
+          <td>{{ pairing.white.name|default:"—" }}</td>
+          <td class="result-cell">
+            {% if pairing.result == 'WHITE_WIN' %}1 – 0
+            {% elif pairing.result == 'BLACK_WIN' %}0 – 1
+            {% elif pairing.result == 'DRAW' %}½ – ½
+            {% elif pairing.result == 'FORFEIT' %}<span style="color:#888">FF</span>
+            {% else %}<span style="color:#ccc">—</span>{% endif %}
+          </td>
+          <td>{{ pairing.black.name|default:"—" }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% empty %}
+  <p style="color:#888">No rounds published yet.</p>
+  {% endfor %}
+
+  <div style="margin-top:32px;color:#bbb;font-size:11px;border-top:1px solid #eee;padding-top:8px">
+    Generated by SwissChess
+  </div>
+
+</body>
+</html>
